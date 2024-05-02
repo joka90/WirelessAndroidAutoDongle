@@ -44,7 +44,7 @@ WifiInfo Config::getWifiInfo() {
         getenv("AAWG_WIFI_BSSID", getMacAddress("wlan0")),
         SecurityMode::WPA2_PERSONAL,
         AccessPointType::DYNAMIC,
-        getenv("AAWG_PROXY_IP_ADDRESS", "10.0.0.1"),
+        getenv("AAWG_PROXY_IP_ADDRESS", "192.168.100.1"),
         getenv("AAWG_PROXY_PORT", 5288),
     };
 }
