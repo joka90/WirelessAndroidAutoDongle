@@ -1,0 +1,15 @@
+--- a/drivers/usb/gadget/configfs.c	2024-05-05 20:22:08.892555927 +0200
++++ b/drivers/usb/gadget/configfs.c	2024-05-05 20:23:12.770316769 +0200
+@@ -2332,7 +2332,12 @@
+ 	ret = configfs_register_subsystem(&gadget_subsys);
+ 
+ #ifdef CONFIG_USB_CONFIGFS_UEVENT
++#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 4, 0)
+ 	android_class = class_create(THIS_MODULE, "android_usb");
++#else
++	android_class = class_create("android_usb");
++#endif
++
+ 	if (IS_ERR(android_class))
+ 		return PTR_ERR(android_class);
+ #endif
