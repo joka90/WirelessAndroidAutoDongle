@@ -24,3 +24,14 @@ dtparam=krnbt=on
 
 # Enable dwc2 required for gadget mode
 dtoverlay=dwc2,dr_mode=peripheral
+
+# fixes rpi (3B, 3B+, 3A+, 4B ,zero W and zero 2) ttyAMA0 serial console
+# if below is enabled use ttyAMA0 on cmdline and /etc/inittab instead of ttyS0 on cmdline, IE console=ttyS0,115200
+# dtoverlay=miniuart-bt
+
+# Enable UART
+#enable_uart=1
+
+# if enable_uart=1 we need fixed or turbo
+#core_freq=250
+force_turbo=1
