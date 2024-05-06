@@ -1,0 +1,27 @@
+image boot.vfat {
+	vfat {
+		# Use fat16 as it is recomended for small partitions
+		# Set sector size to 512 and sectors per cluster to 8 as recomended by chatGPT
+		extraargs = "-s 8 -S 512 -F 16"
+		files = {
+#BOOT_FILES#
+		}
+	}
+
+	size = 16M
+}
+
+image sdcard.img {
+	hdimage {
+	}
+	partition boot {
+		partition-type = 0xE
+		bootable = "true"
+		image = "boot.vfat"
+	}
+
+	partition rootfs {
+		partition-type = 0x83
+		image = "rootfs.f2fs"
+	}
+}
