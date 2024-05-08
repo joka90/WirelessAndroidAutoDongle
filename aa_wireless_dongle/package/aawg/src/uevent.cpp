@@ -15,7 +15,7 @@ UeventMonitor& UeventMonitor::instance() {
 
 void UeventMonitor::monitorLoop(int nl_socket) {
     char msg[NETLINK_MSG_SIZE + 1];
-
+    pthread_setname_np(pthread_self(), "UeventMonitorLoop");
     while (true) {
         ssize_t len = read(nl_socket, msg, NETLINK_MSG_SIZE);
 

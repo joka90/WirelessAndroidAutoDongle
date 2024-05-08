@@ -225,6 +225,8 @@ void BluetoothHandler::connectDevice() {
 
 void BluetoothHandler::retryConnectLoop() {
     bool should_exit = false;
+
+    pthread_setname_np(pthread_self(), "BTretryConnectLoop");
     std::future<void> connectWithRetryFuture = connectWithRetryPromise->get_future();
 
     while (!should_exit) {
