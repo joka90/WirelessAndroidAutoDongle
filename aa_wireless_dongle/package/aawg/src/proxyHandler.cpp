@@ -2,8 +2,11 @@
 #include <unistd.h>
 #include <signal.h>
 #include <fcntl.h>
+#include <pthread.h>
 #include <string.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <netinet/ip.h>
 #include <sys/socket.h>
 #include <sys/poll.h>
 #include <thread>
@@ -66,7 +69,7 @@ ssize_t AAWProxy::readMessage(int fd, unsigned char *buffer, size_t buffer_len) 
 }
 
 void AAWProxy::forward(ProxyDirection direction, std::atomic<bool>& should_exit) {
-    size_t buffer_len = 16384;
+    constexpr size_t buffer_len = 16384;
     unsigned char buffer[buffer_len];
 
     bool read_message;
@@ -155,6 +158,8 @@ void AAWProxy::stopForwarding(std::atomic<bool>& should_exit) {
 void AAWProxy::handleClient(int server_sock) {
     struct sockaddr client_address;
     socklen_t client_addresslen = sizeof(client_address);
+
+    pthread_setname_np(pthread_self(), "handleClient");
     if ((m_tcp_fd = accept(server_sock, &client_address, &client_addresslen)) < 0) {
         close(server_sock);
         Logger::instance()->info("accept failed: %s\n", strerror(errno));
@@ -187,10 +192,40 @@ void AAWProxy::handleClient(int server_sock) {
     };
 
     if (setsockopt(m_tcp_fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv))) {
-        Logger::instance()->info("setsockopt failed: %s\n", strerror(errno));
+        Logger::instance()->info("setsockopt SO_RCVTIMEO failed: %s\n", strerror(errno));
         return;
     }
+    if (std::getenv("AAWG_IPTOS_LOWDELAY")) {
+        auto iptos = IPTOS_LOWDELAY;
+        if (setsockopt(m_tcp_fd, IPPROTO_IP, IP_TOS, &iptos, sizeof(iptos))) {
+            Logger::instance()->info("setsockopt IP_TOS failed: %s\n", strerror(errno));
+        }
+    }
 
+    if (std::getenv("AAWG_SO_PRIORITY")) {
+        // set SO_PRIORITY after IP_TOS as of how implemented in kernel
+        int priority = 6;
+        if (setsockopt(m_tcp_fd, SOL_SOCKET, SO_PRIORITY, &priority, sizeof(priority))) {
+            Logger::instance()->info("setsockopt SO_PRIORITY failed: %s\n", strerror(errno));
+        }
+    }
+    if (std::getenv("AAWG_TCP_NODELAY")) {
+        int flag = 1;
+        if (setsockopt(m_tcp_fd, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(flag))) {
+            Logger::instance()->info("setsockopt TCP_NODELAY failed: %s\n", strerror(errno));
+        }
+    }
+    // TODO 1. check irq mask of nic queue as we are not running irqbalance and the mask is probably all ones, ie we end up on the first core
+    // TODO 2. use isolscpus or cpuset to run this thread in isolation to everithing else.
+    int recv_cpu = 1;
+    if (std::getenv("AAWG_SO_INCOMING_CPU")) {
+
+        if (setsockopt(m_tcp_fd, SOL_SOCKET, SO_INCOMING_CPU, &recv_cpu, sizeof(recv_cpu))) {
+            Logger::instance()->info("setsockopt SO_INCOMING_CPU failed: %s\n", strerror(errno));
+        } else {
+            Logger::instance()->info("SO_INCOMING_CPU: %d\n", recv_cpu);
+        }
+    }
     // Setup signal handler
     struct sigaction sa;
     sa.sa_handler = empty_signal_handler;
@@ -205,6 +240,15 @@ void AAWProxy::handleClient(int server_sock) {
     m_usb_tcp_thread = std::thread(&AAWProxy::forward, this, ProxyDirection::USB_to_TCP, std::ref(should_exit));
     m_tcp_usb_thread = std::thread(&AAWProxy::forward, this, ProxyDirection::TCP_to_USB, std::ref(should_exit));
 
+    pthread_setname_np(m_usb_tcp_thread->native_handle(), "USB_to_TCP");
+    pthread_setname_np(m_tcp_usb_thread->native_handle(), "TCP_to_USB");
+
+    if (std::getenv("AAWG_SO_INCOMING_CPU")) {
+        cpu_set_t cpuset;
+        CPU_ZERO(&cpuset);
+        CPU_SET(recv_cpu, &cpuset);
+        pthread_setaffinity_np(m_tcp_usb_thread->native_handle(), sizeof(cpuset), &cpuset);
+    }
     m_usb_tcp_thread->join();
     m_usb_tcp_thread = std::nullopt;
 
@@ -253,5 +297,5 @@ std::optional<std::thread> AAWProxy::startServer(int32_t port) {
 
     Logger::instance()->info("Tcp server listening on %d\n", port);
 
-    return std::thread(&AAWProxy::handleClient, this, server_sock);
+    return  std::thread(&AAWProxy::handleClient, this, server_sock);
 }
