@@ -2,13 +2,27 @@ image boot.vfat {
 	vfat {
 		# Use fat16 as it is recomended for small partitions
 		# Set sector size to 512 and sectors per cluster to 8 as recomended by chatGPT
-		extraargs = "-s 8 -S 512 -F 16"
+		extraargs = "-f 1 -r 256 -s 8 -S 512 -F 16"
 		files = {
 #BOOT_FILES#
 		}
 	}
 
 	size = 16M
+}
+
+image usbboot.img {
+	vfat {
+		# Use fat16 as it is recomended for small partitions
+		# Set sector size to 512 and sectors per cluster to 8 as recomended by chatGPT
+		extraargs = "-f 1 -r 256 -s 8 -S 512 -F 16"
+		files = {
+#BOOT_FILES#
+			"rootfs.cpio.lz4"
+		}
+	}
+
+	size = 40M
 }
 
 image sdcard.img {

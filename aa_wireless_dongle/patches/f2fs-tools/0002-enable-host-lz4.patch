@@ -1,0 +1,13 @@
+--- a/configure.ac.org	2024-05-10 23:49:59.133329376 +0200
++++ b/configure.ac	2024-05-10 23:50:36.926471420 +0200
+@@ -59,8 +59,8 @@
+ AC_ARG_WITH([lz4],
+ 	[AS_HELP_STRING([--without-lz4],
+ 	  [Ignore presence of liblz4 and disable lz4 support])],
+-	[],
+-	[with_lz4=check])
++	[with_lz4=yes],
++	[with_lz4=yes])
+ 
+ # Checks for programs.
+ AC_PROG_CC

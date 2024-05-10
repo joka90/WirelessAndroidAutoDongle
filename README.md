@@ -7,7 +7,7 @@ This repository consists of the buildroot setup to generate an sd card image to 
 ## Features
 - Native Wireless Android Auto connection to the phone, no extra app needed on the phone.
 - Passes through all Android Auto traffic without any modifications to ensure seamless and safe experience.
-- Fast bootup, connection under 30 seconds.
+- Fast bootup, connection under 5 seconds.
 - Supports multiple boards (Currently multiple Raspberry Pi boards).
 
 ## Supported Hardware
