@@ -1,0 +1,24 @@
+--- a/fsck/main.c.org	2024-05-10 22:34:02.141586808 +0200
++++ b/fsck/main.c	2024-05-10 22:41:19.644919468 +0200
+@@ -596,6 +596,21 @@
+ 		c.compress.alg = COMPR_LZ4;
+ 		c.compress.min_blocks = 1;
+ 		c.compress.filter_ops = &ext_filter;
++
++		/* START buildroot option hack, set -c -x xz -r */
++		/* compression support */
++		c.compress.enabled = true;
++		/* compress except for these extensions */
++		c.compress.required = true;
++		c.compress.filter = COMPR_FILTER_ALLOW;
++		c.compress.filter_ops->add("xz");
++		c.compress.filter_ops->add("gz");
++		c.compress.filter_ops->add("zstd");
++		/* for setting FI_COMPRESS_RELEASED */
++		c.compress.required = true;
++		c.compress.readonly = true;
++		/* END buildroot option hack */
++
+ 		while ((option = getopt(argc, argv, option_string)) != EOF) {
+ 			unsigned int i;
+ 			int val;
