@@ -11,13 +11,14 @@ public:
     void disableGadget();
 
 private:
+    enum gadget : char { none = 0 , accessory = 1, mtp = 2 };
+
     UsbManager();
     UsbManager(UsbManager const&);
     UsbManager& operator=(UsbManager const&);
 
-    void writeGadgetFile(std::string gadgetName, std::string relativeFilePath, const char* content);
-    void enableGadget(std::string name);
-    void disableGadget(std::string name);
+    void enableGadget(gadget name);
 
+    static bool s_have_adb;
     static std::string s_udcName; 
 };

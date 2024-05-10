@@ -7,82 +7,123 @@ SERIAL_NUMBER="0123456"
 MANUFACTURER="My Own"
 PRODUCT="AA Wireless Dongle"
 
-ACCESSORY_GADGET_NAME="accessory"
+ACCESSORY_GADGET_NAME="g1"
 DEFAULT_GADGET_NAME="default"
 
-FUNCTIONFS_PATH=/dev/ffs-mtp
-DAEMON=umtprd
-PIDFILE="/var/run/$DAEMON.pid"
+FUNCTIONFS_MTP_PATH=/dev/ffs-mtp
+FUNCTIONFS_ADB_PATH=/dev/android_adb
 
-RETVAL=0
+DAEMON_MTP=umtprd
+PIDFILE_MTP="/var/run/$DAEMON_MTP.pid"
+RETVAL_MTP=0
 
+DAEMON_ADB=adbd
+PIDFILE_ADB="/var/run/$DAEMON_ADB.pid"
+RETVAL_ADB=0
+
+ENABLE_ADB=1
+
+# check that we have access to the google (18d1) device in udev /lib/udev/rules.d/51-android.rules
 start() {
 	printf "Setting up usb_gadgets: "
 	mountpoint -q /sys/kernel/config || mount -t configfs none /sys/kernel/config
 
-	# Setup accessory config
+	# Setup accessory config AOA 1.0
 	cd /sys/kernel/config/usb_gadget
 	if [ ! -d "$ACCESSORY_GADGET_NAME" ]; then
 		mkdir "$ACCESSORY_GADGET_NAME"
 		cd "$ACCESSORY_GADGET_NAME"
 		echo "0x18D1" > idVendor
-		echo "0x2D00" > idProduct
-		mkdir strings/0x409
-		echo "$SERIAL_NUMBER" > strings/0x409/serialnumber
-		echo "$MANUFACTURER" > strings/0x409/manufacturer
-		echo "$PRODUCT" > strings/0x409/product
-		mkdir functions/accessory.usb0
-		mkdir configs/c.1
-		echo 500 > configs/c.1/MaxPower
-		ln -s functions/accessory.usb0 configs/c.1
-	fi
 
-	# Setup default config
-	cd /sys/kernel/config/usb_gadget
-	if [ ! -d "$DEFAULT_GADGET_NAME" ]; then
-		mkdir "$DEFAULT_GADGET_NAME"
-		cd "$DEFAULT_GADGET_NAME"
-		echo "0x18D1" > idVendor
-		echo "0x4EE1" > idProduct
+		if [ $ENABLE_ADB = 0 ] ; then
+			# property:sys.usb.config=mtp
+			echo "0x4ee1" > idProduct
+		else
+			# property:sys.usb.config=adb
+			echo "0x4ee7" > idProduct
+		fi
 		mkdir strings/0x409
 		echo "$SERIAL_NUMBER" > strings/0x409/serialnumber
 		echo "$MANUFACTURER" > strings/0x409/manufacturer
 		echo "$PRODUCT" > strings/0x409/product
+
+		mkdir functions/accessory.usb0
 		mkdir functions/ffs.mtp
+		if [ $ENABLE_ADB = 0 ] ; then
+			echo "mtp" > strings/0x409/configuration
+		else
+			echo "adb" > strings/0x409/configuration
+			mkdir functions/ffs.adb
+		fi
+
 		mkdir configs/c.1
 		echo 500 > configs/c.1/MaxPower
-		ln -s functions/ffs.mtp configs/c.1
+		if [ $ENABLE_ADB = 0 ] ; then
+			ln -s functions/ffs.mtp configs/c.1/f1
+		else
+			ln -s functions/ffs.adb configs/c.1/f1
+		fi
 	fi
 
 	# Setting up usb_gadget:
 	echo "OK"
 
-	printf "Starting $DAEMON: "
-	if [ ! -f "$FUNCTIONFS_PATH" ]; then
-		mkdir "$FUNCTIONFS_PATH"
+	# Setting up mtp FunctionFS mount and daemon
+	printf "Starting $DAEMON_MTP: "
+	if [ ! -f "$FUNCTIONFS_MTP_PATH" ]; then
+		mkdir "$FUNCTIONFS_MTP_PATH"
 	fi
-	mount -t functionfs mtp "$FUNCTIONFS_PATH"
-	start-stop-daemon -S -b -q -m -p "$PIDFILE" -x "/usr/sbin/$DAEMON"
-	RETVAL=$?
+	mount -t functionfs mtp "$FUNCTIONFS_MTP_PATH"
+	start-stop-daemon -S -b -q -m -p "$PIDFILE_MTP" -x "/usr/sbin/$DAEMON_MTP"
+	RETVAL_MTP=$?
 	sleep 1
-	[ $RETVAL = 0 ] && echo "OK" || echo "FAIL"
+	[ $RETVAL_MTP = 0 ] && echo "OK" || echo "FAIL $RETVAL_MTP"
+
+	if [ $ENABLE_ADB != 0 ] ; then
+		# Setting up adb FunctionFS mount and daemon
+		printf "Starting $DAEMON_ADB: "
+		if [ ! -f "$FUNCTIONFS_ADB_PATH" ]; then
+			mkdir -m0770 "$FUNCTIONFS_ADB_PATH"
+		fi
+
+		mount -t functionfs adb "$FUNCTIONFS_ADB_PATH"
+		start-stop-daemon -S -b -q -m -p "$PIDFILE_ADB" -x "/usr/sbin/$DAEMON_ADB"
+		RETVAL_ADB=$?
+		sleep 1
+		[ $RETVAL_ADB = 0 ] && echo "OK" || echo "FAIL $RETVAL_ADB"
+
+		printf "Starting usb gadget for adb: "
+		UDCNAME=$(basename /sys/class/udc/*)
+		echo "$UDCNAME" > "$ACCESSORY_GADGET_NAME"/UDC
+
+	fi
 }
 
 stop() {
 	printf "Disabe usb_gadgets: "
 	cd /sys/kernel/config/usb_gadget
 	echo "" > "$ACCESSORY_GADGET_NAME"/UDC
-	echo "" > "$DEFAULT_GADGET_NAME"/UDC
 
 	# Disabe usb_gadget:
 	echo "OK"
 
-	printf "Stopping $DAEMON: "
-	start-stop-daemon -K -q -s 9 -p "$PIDFILE"
-	RETVAL=$?
-	umount "$FUNCTIONFS_PATH"
-	rm -r "$FUNCTIONFS_PATH"
-	[ $RETVAL = 0 ] && echo "OK" || echo "FAIL"
+	if [ $ENABLE_ADB != 0 ] ; then
+		umount "$FUNCTIONFS_ADB_PATH"
+		rm -r "$FUNCTIONFS_ADB_PATH"
+		printf "Stopping $DAEMON_ADB: "
+		start-stop-daemon -K -q -s 9 -p "$PIDFILE_ADB"
+		RETVAL_ADB=$?
+		[ $RETVAL_ADB = 0 ] && echo "OK" || echo "FAIL $RETVAL_ADB"
+	fi
+
+	umount "$FUNCTIONFS_MTP_PATH"
+	rm -r "$FUNCTIONFS_MTP_PATH"
+
+	printf "Stopping $DAEMON_MTP: "
+	start-stop-daemon -K -q -s 9 -p "$PIDFILE_MTP"
+	RETVAL_MTP=$?
+
+	[ $RETVAL_MTP = 0 ] && echo "OK" || echo "FAIL $RETVAL_MTP"
 }
 
 restart() {
@@ -106,4 +147,6 @@ case "$1" in
 		;;
 esac
 
-exit $RETVAL
+[ $RETVAL_ADB = 0 ] && exit $RETVAL_MTP
+exit $RETVAL_ADB
+

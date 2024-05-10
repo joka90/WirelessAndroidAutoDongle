@@ -1,4 +1,7 @@
-#include <dirent.h>
+#include <dirent.h> // readdir
+#include <fcntl.h> // open
+#include <sys/stat.h> // stat
+#include <unistd.h> // unlinkat symlinkat
 #include <string.h>
 #include <future>
 
@@ -9,6 +12,7 @@
 constexpr const char* defaultGadgetName = "default";
 constexpr const char* accessoryGadgetName = "accessory";
 
+/*static*/ bool UsbManager::s_have_adb;
 /*static*/ std::string UsbManager::s_udcName;
 
 UsbManager& UsbManager::instance() {
@@ -22,8 +26,12 @@ void UsbManager::init() {
 
 UsbManager::UsbManager() {
     Logger::instance()->info("Initializing USB Manager\n");
+    struct stat statbuf;
 
-    disableGadget();
+    s_have_adb = true;
+    if (stat("/dev/android_adb", &statbuf) == -1) {
+        s_have_adb = false;
+    }
 
     DIR* dirSysClassUdc = opendir("/sys/class/udc/");
     if (dirSysClassUdc == NULL) {
@@ -47,35 +55,105 @@ UsbManager::UsbManager() {
     } else {
         Logger::instance()->info("USB Manager: Found UDC %s\n", s_udcName.c_str());
     }
+
+    // if we are restarted, reset state
+    disableGadget();
 }
 
-void UsbManager::writeGadgetFile(std::string gadgetName, std::string relativeFilePath, const char* content) {
-    std::string gadgetFilePath = "/sys/kernel/config/usb_gadget/" + gadgetName + "/" + relativeFilePath;
-    FILE* gadgetFile = fopen(gadgetFilePath.c_str(), "w");
-    fputs(content, gadgetFile);
-    fputc('\n', gadgetFile);
-    fclose(gadgetFile);
+
+static void unlinkFuncs(std::string path, std::string relativeFilePath) {
+    std::string dir = path + "/" + relativeFilePath;
+    DIR* dirUnlink = opendir(dir.c_str());
+    int dir_fd = dirfd(dirUnlink); // It will be automatically closed when closedir(3) is
+    if (dirUnlink == NULL) {
+        Logger::instance()->info("USB Manager: Error opening %s: %s\n", dir.c_str(), strerror(errno));
+        return;
+    }
+
+    struct dirent* dirEntry = NULL;
+    while ((dirEntry = readdir(dirUnlink)) != NULL) {
+        // match all f[0-9] that are symlinks
+        if (dirEntry->d_name[0] != 'f' || dirEntry->d_type != DT_LNK) {
+            continue;
+        }
+        if ('0' <= dirEntry->d_name[1] && '9' >= dirEntry->d_name[1] && dirEntry->d_name[2] == 0) {
+            if(unlinkat(dir_fd, dirEntry->d_name, 0)) {
+                Logger::instance()->info("USB Manager: Error unlinkat %s %s: %s\n", dir.c_str(), dirEntry->d_name, strerror(errno));
+            }
+        }
+    }
+
+    closedir(dirUnlink);
 }
 
-void UsbManager::enableGadget(std::string gadgetName) {
-    writeGadgetFile(gadgetName, "UDC", s_udcName.c_str());
+static void writeFile(std::string path, std::string relativeFilePath, const char* content) {
+    std::string filePath = path + "/" + relativeFilePath;
+    FILE* f = fopen(filePath.c_str(), "w");
+    fputs(content, f);
+    fputc('\n', f);
+    fclose(f);
 }
 
-void UsbManager::disableGadget(std::string gadgetName) {
-    writeGadgetFile(gadgetName, "UDC", "");
+static void linkFunc(const char* func_path, int dir_fd, const char* config_path) {
+    if (symlinkat(func_path, dir_fd, config_path) == -1) {
+        Logger::instance()->info("USB Manager: failed to link %s -> %s : %s\n", func_path, config_path, strerror(errno));
+    }
 }
+
+void UsbManager::enableGadget(gadget gadgetName) {
+    std::string gadgetFilePath = "/sys/kernel/config/usb_gadget/g1";
+    writeFile(gadgetFilePath, "UDC", "");
+    unlinkFuncs(gadgetFilePath, "configs/c.1");
+    if (gadgetName == none && !s_have_adb) {
+        return;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(100)); // 0.1 second, keep the gadget disabled for a short time to let the host recognize the change
+
+    int dir_fd = open(gadgetFilePath.c_str(), O_RDONLY | O_PATH | O_DIRECTORY);
+    if (dir_fd == -1) {
+        Logger::instance()->info("USB Manager: Error opening %s: %s\n", gadgetFilePath.c_str(), strerror(errno));
+        return;
+    }
+
+    if (gadgetName == none && s_have_adb) {
+        writeFile(gadgetFilePath, "idProduct", "0x4ee7");
+        linkFunc("functions/ffs.adb", dir_fd, "configs/c.1/f1");
+    } else if (gadgetName == mtp && !s_have_adb) {
+        writeFile(gadgetFilePath, "idProduct", "0x4ee1");
+        writeFile(gadgetFilePath, "strings/0x409/configuration", "mtp");
+        linkFunc("functions/ffs.mtp", dir_fd, "configs/c.1/f1");
+    } else if (gadgetName == mtp && s_have_adb) {
+        writeFile(gadgetFilePath, "idProduct", "0x4ee2");
+        writeFile(gadgetFilePath, "strings/0x409/configuration", "mtp_adb");
+        linkFunc("functions/ffs.mtp", dir_fd, "configs/c.1/f1");
+        linkFunc("functions/ffs.adb", dir_fd, "configs/c.1/f2");
+    } else if (gadgetName == accessory && !s_have_adb) {
+        writeFile(gadgetFilePath, "idProduct", "0x2d00");
+        writeFile(gadgetFilePath, "strings/0x409/configuration", "accessory");
+        linkFunc("functions/accessory.usb0", dir_fd, "configs/c.1/f1");
+    } else if (gadgetName == accessory && s_have_adb) {
+        writeFile(gadgetFilePath, "idProduct", "0x2d01");
+        writeFile(gadgetFilePath, "strings/0x409/configuration", "accessory_adb");
+        linkFunc("functions/accessory.usb0", dir_fd, "configs/c.1/f1");
+        linkFunc("functions/ffs.adb", dir_fd, "configs/c.1/f2");
+    }
+    close(dir_fd);
+
+    writeFile(gadgetFilePath, "UDC", s_udcName.c_str());
+}
+
+// void UsbManager::disableGadget(std::string gadgetName) {
+//     writeGadgetFile(gadgetName, "UDC", "");
+// }
 
 void UsbManager::switchToAccessoryGadget() {
-    disableGadget(defaultGadgetName);
-    std::this_thread::sleep_for(std::chrono::milliseconds(100)); // 0.1 second, keep the gadget disabled for a short time to let the host recognize the change
-    enableGadget(accessoryGadgetName);
+    enableGadget(accessory);
 
     Logger::instance()->info("USB Manager: Switched to accessory gadget from default\n");
 }
 
 void UsbManager::disableGadget() {
-    disableGadget(defaultGadgetName);
-    disableGadget(accessoryGadgetName);
+    enableGadget(none);
 
     Logger::instance()->info("USB Manager: Disabled all USB gadgets\n");
 }
@@ -108,7 +186,7 @@ bool UsbManager::enableDefaultAndWaitForAccessory(std::chrono::milliseconds time
         return true;
     });
 
-    enableGadget(defaultGadgetName);
+    enableGadget(mtp);
 
     Logger::instance()->info("USB Manager: Enabled default gadget\n");
 
