@@ -22,7 +22,7 @@ image usbboot.img {
 		}
 	}
 
-	size = 40M
+	size = 108M
 }
 
 image sdcard.img {
