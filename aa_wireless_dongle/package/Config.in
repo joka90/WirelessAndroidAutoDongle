@@ -1,4 +1,6 @@
 menu "Packages"
     source "$BR2_EXTERNAL_AA_WIRELESS_DONGLE_PATH/package/aawg/Config.in"
+    source "$BR2_EXTERNAL_AA_WIRELESS_DONGLE_PATH/package/libbpf-custom/Config.in"
+    source "$BR2_EXTERNAL_AA_WIRELESS_DONGLE_PATH/package/bpftool-custom/Config.in"
     source "$BR2_EXTERNAL_AA_WIRELESS_DONGLE_PATH/package/bcc-backport/Config.in"
 endmenu
