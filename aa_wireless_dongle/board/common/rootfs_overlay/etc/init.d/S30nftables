@@ -1,0 +1,33 @@
+#!/bin/sh
+#
+# Start the firewall
+#
+CONF=/etc/nftables.conf
+BIN=/usr/sbin/nft
+
+[ -x "$BIN" ] || exit 0
+
+case "$1" in
+  start)
+	printf "Starting firewall: "
+	$BIN -f $CONF
+	[ $? = 0 ] && echo "OK" || echo "FAIL"
+	;;
+  stop)
+	printf "Stopping firewall: "
+	$BIN flush ruleset
+	[ $? = 0 ] && echo "OK" || echo "FAIL"
+	;;
+  restart|reload)
+	printf "$1 firewall, checking config: "
+  	$BIN -c -f $CONF
+	[ $? = 0 ] && echo "OK" || echo "FAIL"
+	"$0" start
+	;;
+  *)
+	echo "Usage: $0 {start|stop|restart}"
+	exit 1
+esac
+
+exit $?
+
