@@ -14,8 +14,11 @@ disable_overscan=1
 hdmi_blanking=1
 
 # How much memory in MB to assign to the GPU on Pi models having
-# 256, 512 or 1024 MB total memory
-gpu_mem_256=64
+# 256, 512 or 1024 MB start_cd.elf is used in the case we specify 16MB
+[pi0]
+gpu_mem_256=16
+gpu_mem_512=16
+[all]
 gpu_mem_512=64
 gpu_mem_1024=64
 
