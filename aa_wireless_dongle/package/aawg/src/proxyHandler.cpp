@@ -195,6 +195,7 @@ void AAWProxy::handleClient(int server_sock) {
         Logger::instance()->info("setsockopt SO_RCVTIMEO failed: %s\n", strerror(errno));
         return;
     }
+    // TODO also check TCP_TX_DELAY TCP_WINDOW_CLAMP TCP_QUICKACK TCP_MAXSEG see linux-custom/net/ipv4/tcp.c https://www.spinics.net/lists/netdev/msg131097.html
     if (std::getenv("AAWG_IPTOS_LOWDELAY")) {
         auto iptos = IPTOS_LOWDELAY;
         if (setsockopt(m_tcp_fd, IPPROTO_IP, IP_TOS, &iptos, sizeof(iptos))) {
