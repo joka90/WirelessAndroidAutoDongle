@@ -1,0 +1,4 @@
+#!/usr/bin/env ply
+tracepoint:tcp/tcp_retransmit_skb {
+  printf("saddr:%v port:%v->%v\n",data->saddr, data->sport, data->dport);
+}

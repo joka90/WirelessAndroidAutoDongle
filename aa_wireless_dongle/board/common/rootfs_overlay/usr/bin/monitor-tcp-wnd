@@ -1,0 +1,8 @@
+#!/usr/bin/env ply
+/* https://www.brendangregg.com/blog/2018-03-22/tcp-tracepoints.html */
+tracepoint:tcp/tcp_probe / data- {
+printf("%v saddr:%v port:%v->%v snd_cwnd %v ssthresh %v snd_wnd %v srtt %v rcv_wnd %v \n", comm,
+  data->saddr, data->sport, data->dport,
+  data->snd_cwnd, data->ssthresh,
+  data->snd_wnd, data->srtt, data->rcv_wnd);
+}
