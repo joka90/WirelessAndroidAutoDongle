@@ -1,0 +1,6 @@
+#!/bin/sh
+
+insmod /lib/modules/$(uname -r)/kernel/kernel/kheaders.ko.xz
+mkdir -p /lib/modules/$(uname -r)/build
+xzcat /sys/kernel/kheaders.tar.xz | tar x -f - -C /lib/modules/$(uname -r)/build/
+rmmod kheaders
